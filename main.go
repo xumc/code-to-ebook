@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -76,6 +77,16 @@ func analyzeFile(path string, info os.FileInfo) (*[]*analyzeResult, error) {
 			return nil, err
 		}
 
+		if lastIdentifierExist == true {
+			matched, err := regexp.Match("[0-9A-Za-z_]", []byte{fileBytes[i-1]})
+			if err != nil {
+				fmt.Println(err)
+			}
+			if matched {
+				continue
+			}
+		}
+
 		if lastIdentifierExist == false {
 			analyzeResults = append(analyzeResults, &analyzeResult{
 				path:       path,
@@ -94,6 +105,7 @@ func analyzeFile(path string, info os.FileInfo) (*[]*analyzeResult, error) {
 func buildLink(project string, ele *analyzeResult, fileBytes []byte) string {
 	tag := string(fileBytes[ele.start:ele.end])
 	anchor := strings.Replace(ele.definition.ObjPos, project, "", -1)
+	anchor = strings.Replace(anchor, os.Getenv("GOPATH"), "", -1)
 
 	if ele.definition.ObjPos == ele.path+":"+strconv.FormatInt(ele.line, 10)+":"+strconv.FormatInt(ele.lineOffset, 10) {
 		return "<a name='" + anchor + "'>" + tag + "</a>"
@@ -121,7 +133,7 @@ func buildHTML(project string, path string, analyzeResultsPtr *[]*analyzeResult)
 	for _, ele := range analyzeResults {
 		text := string(fileBytes[lastEndAt:ele.start])
 		text = strings.Replace(text, " ", "&nbsp;", -1)
-		html += strings.Replace(text, "\t", "&nbsp;&nbsp;", -1)
+		html += strings.Replace(text, "\t", "&nbsp;&nbsp;&nbsp;&nbsp;", -1)
 		html += buildLink(project, ele, fileBytes)
 		lastEndAt = ele.end
 	}
@@ -140,6 +152,14 @@ func buildHTML(project string, path string, analyzeResultsPtr *[]*analyzeResult)
 
 func main() {
 	project := os.Args[1]
+	targetFilePath := os.Args[2]
+
+	file, err := os.Create(targetFilePath)
+	defer file.Close()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 
 	walk := func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
@@ -159,7 +179,11 @@ func main() {
 		if err != nil {
 			return nil
 		}
-		fmt.Println(*html)
+
+		file.WriteString("<h5>" + strings.Replace(path, project, "", -1) + "</h5>")
+		file.WriteString("<hr />")
+		file.WriteString(*html)
+		file.WriteString("<br /> <br />")
 
 		return nil
 	}
