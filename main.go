@@ -108,8 +108,7 @@ func analyzeFile(path string, info os.FileInfo, result chan resultChanStruct) {
 
 func buildLink(project string, ele *analyzeResult, fileBytes []byte) string {
 	tag := html.EscapeString(string(fileBytes[ele.start:ele.end]))
-	anchor := strings.Replace(ele.definition.ObjPos, project, "", -1)
-	anchor = strings.Replace(anchor, os.Getenv("GOPATH"), "", -1)
+	anchor := strings.Replace(ele.definition.ObjPos, os.Getenv("GOPATH"), "", -1)
 
 	if ele.definition.ObjPos == ele.path+":"+strconv.FormatInt(ele.line, 10)+":"+strconv.FormatInt(ele.lineOffset, 10) {
 		return "<a name='" + anchor + "'>" + tag + "</a>"
@@ -161,13 +160,23 @@ func main() {
 	resultChan := make(chan resultChanStruct)
 	goroutineCount := 0
 
+	paths := make([]string, 0)
+	htmlContents := make(map[string]string)
+
 	walk := func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
 			return nil
 		}
 
+		paths = append(paths, path)
+
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
+			bytes, err := ioutil.ReadFile(path)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			htmlContents[path] = string(bytes)
 		}
 
 		go analyzeFile(path, info, resultChan)
@@ -188,12 +197,19 @@ func main() {
 				fmt.Println(err)
 				os.Exit(1)
 			}
-			file.WriteString("<h3>" + strings.Replace(fileResult.path, project, "", -1) + "</h3>")
-			file.WriteString(*htmlContent)
-			file.WriteString("<hr />")
-			file.WriteString("<br />")
+
+			htmlContents[fileResult.path] = *htmlContent
+
 			goroutineCount--
 		}
+	}
+
+	for _, path := range paths {
+		reducedPath := strings.Replace(path, project, "", -1)
+		file.WriteString("<h3>" + reducedPath + "</h3>")
+		file.WriteString(htmlContents[path])
+		file.WriteString("<hr />")
+		file.WriteString("<br />")
 	}
 
 	file.WriteString("</body></html>")
